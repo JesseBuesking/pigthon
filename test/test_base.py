@@ -15,7 +15,9 @@ class TestBase(unittest.TestCase):
     def setUpClass(cls):
         """ Sets up the class. """
         path = normpath(dirname(dirname(__file__)) + '/conf/logging.yaml')
-        if exists(path):
-            with open(path, 'rt') as f:
-                config = yaml.load(f.read())
-                logging.config.dictConfig(config)
+        if not exists(path):
+            return
+
+        with open(path, 'rt') as f:
+            config = yaml.load(f.read())
+            logging.config.dictConfig(config)

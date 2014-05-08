@@ -1,3 +1,6 @@
+""" Manages running pig from python. """
+
+
 from genericpath import exists
 from os import environ
 from os.path import normpath
@@ -10,8 +13,7 @@ logger = PtLog(__name__)
 class PigOptions(object):
     """ Manages command line options for pig script execution. """
 
-    _options = dict()
-
+    # noinspection PyShadowingBuiltins
     def __init__(self, log4jconf=None, brief=None, check=None, debug=None,
                  execute=None, file=None, embedded=None, help=None,
                  version=None, logfile=None, param_file=None, params=None,
@@ -49,7 +51,8 @@ class PigOptions(object):
         assert brief in {True, False, None}
         assert check in {True, False, None}
         assert debug in {'DEBUG', 'WARN', 'INFO', None}
-        assert execute in {str, unicode, None} # TODO make sure it's in quotes?
+        # TODO make sure it's in quotes?
+        assert execute in {str, unicode, None}
         assert file in {str, unicode, None}
         assert embedded in {str, unicode, None}
         assert help in {True, False, None}
@@ -69,7 +72,7 @@ class PigOptions(object):
         assert stop_on_failure in {True, False, None}
         assert no_multiquery in {True, False, None}
         assert property_file in {str, unicode, None}
-        PigOptions._options = {
+        self._options = {
             'log4jconf': log4jconf,
             'brief': brief,
             'check': check,
@@ -93,86 +96,86 @@ class PigOptions(object):
 
     def log4jconf(self):
         """ Log4j configuration file, overrides log conf. """
-        return PigOptions._options.get('log4jconf', None)
+        return self._options.get('log4jconf', None)
 
     def brief(self):
         """ Brief logging (no timestamps). """
-        return PigOptions._options.get('brief', None)
+        return self._options.get('brief', None)
 
     def check(self):
         """ Syntax check. """
-        return PigOptions._options.get('check', None)
+        return self._options.get('check', None)
 
     def debug(self):
         """ Debug level, INFO is default. """
-        return PigOptions._options.get('debug', None)
+        return self._options.get('debug', None)
 
     def execute(self):
         """ Commands to execute (within quotes). """
-        return PigOptions._options.get('execute', None)
+        return self._options.get('execute', None)
 
     def file(self):
         """ Path to the script to execute. """
-        return PigOptions._options.get('file', None)
+        return self._options.get('file', None)
 
     def embedded(self):
         """ ScriptEngine classname or keyword for the ScriptEngine. """
-        return PigOptions._options.get('embedded', None)
+        return self._options.get('embedded', None)
 
     def help(self):
         """
         Display this message. You can specify topic to get help for that topic.
         properties is the only topic currently supported: -h properties.
         """
-        return PigOptions._options.get('help', None)
+        return self._options.get('help', None)
 
     def version(self):
         """ Display version information. """
-        return PigOptions._options.get('version', None)
+        return self._options.get('version', None)
 
     def logfile(self):
         """
         Path to client side log file; default is current working directory.
         """
-        return PigOptions._options.get('logfile', None)
+        return self._options.get('logfile', None)
 
     def param_file(self):
         """ Path to the parameter file. """
-        return PigOptions._options.get('param_file', None)
+        return self._options.get('param_file', None)
 
     def params(self):
         """ Key value pairs to supply to pig. """
-        return PigOptions._options.get('params', None)
+        return self._options.get('params', None)
 
     def dryrun(self):
         """
         Produces script with substituted parameters. Script is not executed.
         """
-        return PigOptions._options.get('dryrun', None)
+        return self._options.get('dryrun', None)
 
     def verbose(self):
         """ Print all error messages to screen. """
-        return PigOptions._options.get('verbose', None)
+        return self._options.get('verbose', None)
 
     def warning(self):
         """ Turn warning logging on; also turns warning aggregation off. """
-        return PigOptions._options.get('warning', None)
+        return self._options.get('warning', None)
 
     def exectype(self):
         """ Set execution mode: local|mapreduce, default is mapreduce. """
-        return PigOptions._options.get('exectype', None)
+        return self._options.get('exectype', None)
 
     def stop_on_failure(self):
         """ Aborts execution on the first failed job; default is off. """
-        return PigOptions._options.get('stop_on_failure', None)
+        return self._options.get('stop_on_failure', None)
 
     def no_multiquery(self):
         """ Turn multiquery optimization off; default is on. """
-        return PigOptions._options.get('no_multiquery', None)
+        return self._options.get('no_multiquery', None)
 
     def property_file(self):
         """ Path to property file. """
-        return PigOptions._options.get('propertyFile', None)
+        return self._options.get('propertyFile', None)
 
     def to_cmd_array(self):
         """
@@ -183,6 +186,8 @@ class PigOptions(object):
         # options
         if self.help() is not None and self.help():
             return ['-help']
+        if self.version() is not None and self.version():
+            return ['-version']
 
 
 class PigTestOptions(PigOptions):
@@ -190,8 +195,33 @@ class PigTestOptions(PigOptions):
     pass
 
 
-# noinspection PyDocstring
+class PigTest(object):
+    """ Base class for running pig tests. """
+
+    def __init__(self):
+        self.pigthon = Pigthon()
+
+    def script(self):
+        """ The pig script to test. """
+        pass
+
+    def options(self):
+        """ The PigTestOptions to use. """
+        return None
+
+    def run_script(self):
+        """ Runs the pig script test. """
+        options = self.options()
+        if options is None:
+            options = PigTestOptions(file=self.script())
+        else:
+            options._options['file'] = self.script()
+        output, error = self.pigthon.test(options)
+        return output, error
+
+
 class Pigthon(object):
+    """ Encapsulates the logic necessary for running pig. """
 
     def __init__(self, filename=None, is_jar=None):
         self._config = dict()
@@ -208,6 +238,13 @@ class Pigthon(object):
                 self._config['is_jar'] = True
 
     def run(self, args):
+        """
+        Runs stuff on the command line.
+
+        :param list args: the arguments to run
+        :returns: the output and error output from the command that was ran
+        :rtype: tuple(output, error)
+        """
         logger.info('Running command: ')
         logger.info(' '.join(args))
         output, error = Popen(
@@ -219,25 +256,46 @@ class Pigthon(object):
         return output, error
 
     def pig_cmd(self):
+        """
+        Gets the command to call to run pig on the command line.
+
+        :returns: the command for pig
+        :rtype: list()
+        """
         is_jar = self._config.get('is_jar', None)
         if is_jar is not None and is_jar:
             return ['java', '-jar', normpath(environ.get('PIG_JAR'))]
         else:
-            return environ.get('PIG')
+            return [environ.get('PIG')]
 
-    def pig(self, pig_options=None):
+    def pig(self, options=None):
         """
         Runs pig with the arguments supplied.
 
-        :param PigOptions pig_options: all of the command line options to
-         supply to the pig command
+        :param options: all of the command line options to supply to the pig
+         command
+        :type options: PigOptions, PigTestOptions or None
         """
-        if pig_options is None:
-            pig_options = PigOptions()
-        args = self.pig_cmd() + pig_options.to_cmd_array()
+        if options is None:
+            options = PigOptions()
+        args = self.pig_cmd() + options.to_cmd_array()
         output, error = self.run(args)
         logger.debugHeader('error')
         logger.debug(error)
         logger.debugHeader('output')
         logger.debug(output)
+        return output, error
+
+    def test(self, options=None):
+        """
+        Runs pig with the arguments supplied, defaulting to the defaults for
+        running tests.
+
+        :param options: all of the command line options to supply to the pig
+         command
+        :type options: PigTestOptions or None
+        """
+        if options is None:
+            options = PigTestOptions()
+        output, error = self.pig(options)
         return output, error
