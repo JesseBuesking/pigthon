@@ -1,0 +1,7 @@
+################################################################################
+# Set the default behaviour, in case users don't have core.autocrlf set.
+# See: https://help.github.com/articles/dealing-with-line-endings#example
+################################################################################
+* text=auto
+*.sh eol=lf
+*.py eol=lf
