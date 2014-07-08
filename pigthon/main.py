@@ -2,12 +2,20 @@
 
 
 from genericpath import exists
-from os import environ
-from os.path import normpath
-from subprocess import Popen, PIPE
+from os import environ, name
+from pigthon.util import cmd
+from pigthon.util.processreader import ProcessReader
 from pigthon.util.ptlog import PtLog
 from pigthon.util.yaml_conf import load_yaml
+from subprocess import Popen, PIPE
+import os
+import sys
+
+
 logger = PtLog(__name__)
+
+
+ON_POSIX = 'posix' in sys.builtin_module_names
 
 
 class PigOptions(object):
@@ -18,7 +26,8 @@ class PigOptions(object):
                  execute=None, file=None, embedded=None, help=None,
                  version=None, logfile=None, param_file=None, params=None,
                  dryrun=None, verbose=None, warning=None, exectype=None,
-                 stop_on_failure=None, no_multiquery=None, property_file=None):
+                 stop_on_failure=None, no_multiquery=None,
+                 property_file=None, dparams=None):
         """
         :param log4jconf: Log4j configuration file, overrides log conf
         :param brief: brief logging (no timestamps)
@@ -46,32 +55,38 @@ class PigOptions(object):
          default is off
         :param no_multiquery: turn multiquery optimization off; default is on
         :param property_file: Path to property file
+        :param dparams: key value pairs to supply to pig as -D params
         """
-        assert log4jconf in {str, unicode, None}
+        assert type(log4jconf) in {str, unicode} or log4jconf is None
         assert brief in {True, False, None}
         assert check in {True, False, None}
         assert debug in {'DEBUG', 'WARN', 'INFO', None}
-        # TODO make sure it's in quotes?
-        assert execute in {str, unicode, None}
-        assert file in {str, unicode, None}
-        assert embedded in {str, unicode, None}
+        assert type(execute) in {str, unicode} or execute is None
+        assert type(file) in {str, unicode} or file is None
+        assert type(embedded) in {str, unicode} or embedded is None
         assert help in {True, False, None}
         assert version in {True, False, None}
-        assert logfile in {str, unicode, None}
-        assert param_file in {str, unicode, None}
+        assert type(logfile) in {str, unicode} or logfile is None
+        assert type(param_file) in {str, unicode} or param_file is None
         if isinstance(params, dict):
             for k, v in params.iteritems():
-                assert k in {str, unicode}
-                assert v in {str, unicode}
+                assert type(k) in {str, unicode}
         else:
-            assert params is None
+            assert params is None, 'params must be a dictionary or None, ' \
+                                   'but is {}'.format(type(params))
         assert dryrun in {True, False, None}
         assert verbose in {True, False, None}
         assert warning in {True, False, None}
         assert exectype in {'local', 'mapreduce', None}
         assert stop_on_failure in {True, False, None}
         assert no_multiquery in {True, False, None}
-        assert property_file in {str, unicode, None}
+        assert type(property_file) in {str, unicode} or property_file is None
+        if isinstance(dparams, dict):
+            for k, v in dparams.iteritems():
+                assert type(k) in {str, unicode}
+        else:
+            assert dparams is None, 'dparams must be a dictionary or None, ' \
+                                   'but is {}'.format(type(dparams))
         self._options = {
             'log4jconf': log4jconf,
             'brief': brief,
@@ -91,7 +106,8 @@ class PigOptions(object):
             'exectype': exectype,
             'stop_on_failure': stop_on_failure,
             'no_multiquery': no_multiquery,
-            'property_file': property_file
+            'property_file': property_file,
+            'dparams': dparams
         }
 
     def log4jconf(self):
@@ -177,22 +193,107 @@ class PigOptions(object):
         """ Path to property file. """
         return self._options.get('propertyFile', None)
 
+    def dparams(self):
+        """ Key value pairs to supply to pig as -D params. """
+        return self._options.get('dparams', None)
+
     def to_cmd_array(self):
         """
         Converts the options into an array of values to be passed on the
         command line.
         """
-        # if help is set, just return the help flag and throw away all other
-        # options
         if self.help() is not None and self.help():
             return ['-help']
+
         if self.version() is not None and self.version():
             return ['-version']
+
+        args = []
+        if self.dparams() is not None and isinstance(self.dparams(), dict):
+            for key, value in self.dparams().iteritems():
+                value = str(value)
+                if value == '':
+                    args += ['-D{}=""'.format(key)]
+                else:
+                    args += ['-D{}={}'.format(key, cmd.safe_quote(value))]
+
+        if self.exectype() is not None:
+            args += ['-exectype', self.exectype()]
+
+        if self.file() is not None:
+            args += ['-file', self.file()]
+
+        if self.log4jconf() is not None:
+            args += ['-log4jconf', self.log4jconf()]
+
+        if self.brief() is not None and self.brief():
+            args += ['-brief']
+
+        if self.check() is not None and self.check():
+            args += ['-check']
+
+        if self.debug() is not None:
+            args += ['-debug', self.debug()]
+
+        if self.execute() is not None:
+            args += ['-execute', cmd.safe_quote(self.execute())]
+
+        if self.embedded() is not None:
+            args += ['-embedded', self.embedded()]
+
+        if self.logfile() is not None:
+            args += ['-logfile', self.logfile()]
+
+        if self.param_file() is not None:
+            args += ['-param_file', self.logfile()]
+
+        if self.params() is not None and isinstance(self.params(), dict):
+            for key, value in self.params().iteritems():
+                value = str(value)
+                if value == '':
+                    args += ['-param', '{}=""'.format(key)]
+                else:
+                    args += [
+                        '-param',
+                        '{}={}'.format(key, cmd.safe_quote(value))
+                    ]
+
+        if self.dryrun() is not None and self.dryrun():
+            args += ['-dryrun']
+
+        if self.verbose() is not None and self.verbose():
+            args += ['-verbose']
+
+        if self.warning() is not None and self.warning():
+            args += ['-warning']
+
+        if self.stop_on_failure() is not None and self.stop_on_failure():
+            args += ['-stop_on_failure']
+
+        if self.no_multiquery() is not None and self.no_multiquery():
+            args += ['-no_multiquery']
+
+        if self.property_file() is not None:
+            args += ['-propertyFile', self.property_file()]
+
+        return args
 
 
 class PigTestOptions(PigOptions):
     """ Manages command line options when running pig tests. """
-    pass
+
+    def __init__(self, *args, **kwargs):
+        super(PigTestOptions, self).__init__(*args, **kwargs)
+
+    def exectype(self):
+        """ Set execution mode: local|mapreduce, default is local. """
+        value = self._options.get('exectype', None)
+        return value if value is not None else 'local'
+
+    def debug(self):
+        """ Debug level, DEBUG is default. """
+        value = self._options.get('debug', None)
+        return value if value is not None else 'DEBUG'
 
 
 class PigTest(object):
@@ -247,13 +348,19 @@ class Pigthon(object):
         """
         logger.info('Running command: ')
         logger.info(' '.join(args))
-        output, error = Popen(
+        is_windows = name == 'nt'
+        p = Popen(
             args,
             stdout=PIPE,
             stderr=PIPE,
-            shell=True
-        ).communicate()
-        return output, error
+            shell=is_windows,
+            env=environ,
+            bufsize=1,
+            close_fds=ON_POSIX
+        )
+
+        pr = ProcessReader(p, p_out=False, p_err=False)
+        return pr.results()
 
     def pig_cmd(self):
         """
@@ -262,11 +369,13 @@ class Pigthon(object):
         :returns: the command for pig
         :rtype: list()
         """
-        is_jar = self._config.get('is_jar', None)
-        if is_jar is not None and is_jar:
-            return ['java', '-jar', normpath(environ.get('PIG_JAR'))]
-        else:
-            return [environ.get('PIG')]
+        return ['pig']
+
+        # is_jar = self._config.get('is_jar', None)
+        # if is_jar is not None and is_jar:
+        #     return ['pig']
+        # else:
+        #     return [environ.get('PIG')]
 
     def pig(self, options=None):
         """
@@ -279,12 +388,12 @@ class Pigthon(object):
         if options is None:
             options = PigOptions()
         args = self.pig_cmd() + options.to_cmd_array()
-        output, error = self.run(args)
+        code, output, error = self.run(args)
         logger.debugHeader('error')
-        logger.debug(error)
+        logger.debug(os.linesep + os.linesep.join(error))
         logger.debugHeader('output')
-        logger.debug(output)
-        return output, error
+        logger.debug(os.linesep + os.linesep.join(output))
+        return code, output, error
 
     def test(self, options=None):
         """
@@ -297,5 +406,5 @@ class Pigthon(object):
         """
         if options is None:
             options = PigTestOptions()
-        output, error = self.pig(options)
-        return output, error
+        code, output, error = self.pig(options)
+        return code, output, error

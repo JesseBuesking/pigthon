@@ -1,11 +1,10 @@
-"""
-Logic for working with yaml.
-"""
+""" Logic for working with yaml. """
 
 
 from dateutil import parser
-import yaml
 from yaml import load
+import yaml
+
 
 try:
     from yaml import CLoader as Loader, CDumper as Dumper

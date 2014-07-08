@@ -1,3 +1,6 @@
+""" Wrapper around a logger. """
+
+
 import logging
 
 

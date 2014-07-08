@@ -39,3 +39,16 @@ class Test(TestBase):
         p = Pigthon()
         output, error = p.pig(po)
         self.assertTrue('Display this message' in output)
+
+    def test_cmd_array_local(self):
+        """ A very simple cmd array test for PigOptions. """
+        po = PigOptions(exectype='local')
+        self.assertEqual(['-exectype', 'local'], po.to_cmd_array())
+
+    def test_cmd_array_custom_param(self):
+        """ A more complex cmd array test for PigOptions. """
+        po = PigOptions(params={'cake': 'IMPORT "/path/to/import";'})
+        self.assertEqual(
+            ['-param', 'cake="IMPORT \'"\'"\'/path/to/import\'"\'"\';"'],
+            po.to_cmd_array()
+        )
